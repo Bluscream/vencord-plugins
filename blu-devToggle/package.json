@@ -1,0 +1,27 @@
+{
+  "name": "blu-devToggle",
+  "version": "1.0.0",
+  "description": "Adds a checkbox to the Equicord/Vencord toolbox to enable/disable all developer tools at once",
+  "main": "index.tsx",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "vencord",
+    "discord",
+    "plugin",
+    "developer",
+    "tools",
+    "toggle"
+  ],
+  "author": "Bluscream",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bluscream/vencord-plugins.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Bluscream/vencord-plugins/issues"
+  },
+  "homepage": "https://github.com/Bluscream/vencord-plugins#readme"
+}

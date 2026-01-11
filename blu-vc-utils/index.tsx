@@ -79,23 +79,34 @@ function getVoiceChannelStatusFromUI(channelId: string): string | null {
 
                         // Check if this is the channel we're looking for
                         if (channel.id === channelId) {
-                            const text = element.textContent || "";
-                            console.log(`[${pluginName}] Found channel ${channelId} with text: ${text}`);
+                            console.log(`[${pluginName}] Found channel ${channelId}`);
 
-                            // Extract the full status text - appears between "Invite to Voice<number>" and user list
-                            // Look for the pattern: "Invite to Voice<number>" followed by status text, then usernames
+                            // Try to find the status span element within this channel
+                            // Look for span that contains the status text (typically after the "Invite to Voice" number spans)
+                            const spans = element.querySelectorAll("span");
+                            for (const span of spans) {
+                                const text = span.textContent?.trim();
+                                if (text && text.length > 3 && !text.match(/^(Voice|Open Chat|Invite to Voice|\d{1,2}|Playing|WZDE|snus)$/)) {
+                                    console.log(`[${pluginName}] Extracted status from span: "${text}"`);
+                                    return text;
+                                }
+                            }
+
+                            // Fallback: extract from full text using patterns
+                            const text = element.textContent || "";
+                            console.log(`[${pluginName}] Trying fallback extraction from full text: ${text}`);
+
                             const statusMatch = text.match(/Invite to Voice\d+(.+?)(?=@[A-Za-z0-9_]+|\d{1,2}:\d{2}:\d{2})/);
                             if (statusMatch) {
                                 const status = statusMatch[1].trim();
-                                console.log(`[${pluginName}] Extracted full status: "${status}"`);
+                                console.log(`[${pluginName}] Extracted fallback status: "${status}"`);
                                 return status;
                             }
 
-                            // Fallback: try to extract text between channel name and first user
                             const fallbackMatch = text.match(/Open Chat(.+?)(?=@[A-Za-z0-9_]+|\d{1,2}:\d{2}:\d{2})/);
                             if (fallbackMatch) {
                                 const status = fallbackMatch[1].trim();
-                                console.log(`[${pluginName}] Extracted fallback status: "${status}"`);
+                                console.log(`[${pluginName}] Extracted Open Chat fallback status: "${status}"`);
                                 return status;
                             }
 

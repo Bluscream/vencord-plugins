@@ -176,34 +176,56 @@ function getVoiceChannelStatus(channelId: string): string | null {
     }
 }
 
+// Helper function to extract code while ignoring specified words
+function extractCodeWithIgnore(text: string, regex: RegExp, ignoredWords: string[]): string | null {
+    if (!text) return null;
+
+    const matches = text.match(regex);
+    if (!matches) return null;
+
+    // Parse ignored words from settings string
+    const ignoredSet = new Set(ignoredWords.map(word => word.toLowerCase().trim()));
+
+    // Filter out ignored words and return first valid match
+    for (const match of matches) {
+        if (!ignoredSet.has(match.toLowerCase())) {
+            return match;
+        }
+    }
+
+    return null; // All matches were ignored
+}
+
 async function extractCode(channel: Channel): Promise<string | null> {
     console.log(`[${pluginName}] extractCode called for channel: ${channel.name} (${channel.id})`);
     const regex = new RegExp(settings.store.codeRegex);
+    const ignoredWords = settings.store.ignoredWords.split(",").filter(w => w.trim());
     console.log(`[${pluginName}] Using regex pattern: ${settings.store.codeRegex}`);
+    console.log(`[${pluginName}] Ignored words: [${ignoredWords.join(", ")}]`);
 
     // Try to extract from channel status
     console.log(`[${pluginName}] Checking channel status`);
     const status = getVoiceChannelStatus(channel.id);
     if (status) {
-        const statusMatch = status?.match(regex);
+        const statusMatch = extractCodeWithIgnore(status, regex, ignoredWords);
         if (statusMatch) {
-            console.log(`[${pluginName}] Found code in channel status: ${statusMatch[0]}`);
-            return statusMatch[0];
+            console.log(`[${pluginName}] Found code in channel status: ${statusMatch}`);
+            return statusMatch;
         }
     }
     // Try to extract from channel topic
     console.log(`[${pluginName}] Checking channel topic: "${channel.topic}"`);
-    const topicMatch = channel.topic?.match(regex);
+    const topicMatch = extractCodeWithIgnore(channel.topic || "", regex, ignoredWords);
     if (topicMatch) {
-        console.log(`[${pluginName}] Found code in channel topic: ${topicMatch[0]}`);
-        return topicMatch[0];
+        console.log(`[${pluginName}] Found code in channel topic: ${topicMatch}`);
+        return topicMatch;
     }
     // Try to extract from channel name
     console.log(`[${pluginName}] Checking channel name: "${channel.name}"`);
-    const nameMatch = channel.name?.match(regex);
+    const nameMatch = extractCodeWithIgnore(channel.name || "", regex, ignoredWords);
     if (nameMatch) {
-        console.log(`[${pluginName}] Found code in channel name: ${nameMatch[0]}`);
-        return nameMatch[0];
+        console.log(`[${pluginName}] Found code in channel name: ${nameMatch}`);
+        return nameMatch;
     }
     // Try to extract from messages in the channel
     console.log(`[${pluginName}] Checking messages in channel...`);
@@ -217,10 +239,10 @@ async function extractCode(channel: Channel): Promise<string | null> {
 
             for (const message of messageArray) {
                 if (message.content) {
-                    const messageMatch = message.content.match(regex);
+                    const messageMatch = extractCodeWithIgnore(message.content, regex, ignoredWords);
                     if (messageMatch) {
-                        console.log(`[${pluginName}] Found code in message from ${message.author?.username || "unknown"}: ${messageMatch[0]}`);
-                        return messageMatch[0];
+                        console.log(`[${pluginName}] Found code in message from ${message.author?.username || "unknown"}: ${messageMatch}`);
+                        return messageMatch;
                     }
                 }
             }
@@ -342,17 +364,91 @@ const VoiceChannelContext: NavContextMenuPatchCallback = (children, { channel }:
 };
 
 const settings = definePluginSettings({
+    fallbackDict: {
+        type: OptionType.BOOLEAN,
+        description: "Use fallback dictionary for channel statuses",
+        default: true
+    },
     codeRegex: {
         type: OptionType.STRING,
         description: "Regex pattern to match codes",
         default: "\\b([a-z0-9]{5}|[A-Z0-9]{5})\\b"
     },
-    fallbackDict: {
-        type: OptionType.BOOLEAN,
-        description: "Use fallback dictionary for channel statuses",
-        default: true
+    ignoredWords: {
+        type: OptionType.STRING,
+        description: "Whitelisted words to ignore in status extraction",
+        default: "camos,grind"
+    },
+    autoExtractServers: {
+        type: OptionType.STRING,
+        description: "Servers to auto extract codes from when joining a voice channel",
+        default: "500074231544152074,687345074627149873"
     }
 });
+
+// Auto extract code when joining voice channels in specified servers
+async function handleVoiceStateUpdate(voiceState: any) {
+    console.log(`[${pluginName}] VOICE_STATE_UPDATE received:`, {
+        channelId: voiceState.channelId,
+        userId: voiceState.userId,
+        currentUserId: UserStore.getCurrentUser().id,
+        isCurrentUser: voiceState.userId === UserStore.getCurrentUser().id,
+        hasChannelId: !!voiceState.channelId
+    });
+
+    try {
+        // Only proceed when user is joining a voice channel
+        if (!voiceState.channelId) {
+            console.log(`[${pluginName}] Skipping - no channelId`);
+            return;
+        }
+
+        if (voiceState.userId !== UserStore.getCurrentUser().id) {
+            console.log(`[${pluginName}] Skipping - not current user`);
+            return;
+        }
+
+        const channel = ChannelStore.getChannel(voiceState.channelId);
+        if (!channel) {
+            console.log(`[${pluginName}] Skipping - channel not found: ${voiceState.channelId}`);
+            return;
+        }
+
+        if (channel.type !== 2 && channel.type !== 13) {
+            console.log(`[${pluginName}] Skipping - not voice/stage channel (type: ${channel.type})`);
+            return; // Not a voice/stage channel
+        }
+
+        // Check if this server is in the auto-extract list
+        const autoExtractServers = settings.store.autoExtractServers.split(",").map(id => id.trim()).filter(Boolean);
+        const serverInList = autoExtractServers.includes(channel.guild_id);
+
+        console.log(`[${pluginName}] Auto-extract check:`, {
+            channelName: channel.name,
+            guildId: channel.guild_id,
+            autoExtractServers,
+            serverInList
+        });
+
+        if (!serverInList) {
+            console.log(`[${pluginName}] Skipping - server not in auto-extract list`);
+            return;
+        }
+
+        console.log(`[${pluginName}] ✅ Auto-extracting code for channel ${channel.name} in server ${channel.guild_id}`);
+
+        // Extract and copy the code
+        const code = await extractCode(channel);
+        if (code) {
+            console.log(`[${pluginName}] ✅ Auto-extracted code ${code} - copying to clipboard`);
+            copyWithToast(code, `Auto-extracted code ${code} copied to clipboard`);
+        } else {
+            console.log(`[${pluginName}] ❌ No code found for auto-extraction`);
+        }
+    } catch (error) {
+        console.error(`[${pluginName}] ❌ Error in auto-extract:`, error);
+    }
+}
 
 export default definePlugin({
     name: pluginName,
@@ -381,5 +477,20 @@ export default definePlugin({
                 statuses[id] = status;
             }
         },
+        VOICE_STATE_UPDATE(voiceState: any) {
+            console.log(`[${pluginName}] 🎯 VOICE_STATE_UPDATE flux event received`);
+            handleVoiceStateUpdate(voiceState);
+        },
+        VOICE_STATE_CONNECT(voiceState: any) {
+            console.log(`[${pluginName}] 🎤 VOICE_STATE_CONNECT event received:`, voiceState);
+            handleVoiceStateUpdate(voiceState);
+        },
+        VOICE_STATE_DISCONNECT(voiceState: any) {
+            console.log(`[${pluginName}] 🎤 VOICE_STATE_DISCONNECT event received:`, voiceState);
+        }
+    },
+    start() {
+        console.log(`[${pluginName}] 🚀 Plugin started - auto-extract servers: ${settings.store.autoExtractServers}`);
+        console.log(`[${pluginName}] 🎤 Current voice state:`, VoiceStateStore.getVoiceStateForUser(UserStore.getCurrentUser().id));
     }
 });

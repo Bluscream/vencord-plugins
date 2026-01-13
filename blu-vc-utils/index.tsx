@@ -450,6 +450,54 @@ async function handleVoiceStateUpdate(voiceState: any) {
     }
 }
 
+// Handle auto-extraction when voice channel status updates
+async function handleVoiceChannelStatusUpdate(channelId: string, guildId: string) {
+    try {
+        // Check if current user is in this voice channel
+        const currentVoiceState = VoiceStateStore.getVoiceStateForUser(UserStore.getCurrentUser().id);
+        if (!currentVoiceState || currentVoiceState.channelId !== channelId) {
+            console.log(`[${pluginName}] Status update - user not in channel ${channelId}`);
+            return;
+        }
+
+        const channel = ChannelStore.getChannel(channelId);
+        if (!channel) {
+            console.log(`[${pluginName}] Status update - channel not found: ${channelId}`);
+            return;
+        }
+
+        // Check if this server is in the auto-extract list
+        const autoExtractServers = settings.store.autoExtractServers.split(",").map(id => id.trim()).filter(Boolean);
+        const serverInList = autoExtractServers.includes(guildId);
+
+        console.log(`[${pluginName}] Status update auto-extract check:`, {
+            channelName: channel.name,
+            guildId: guildId,
+            autoExtractServers,
+            serverInList,
+            userInChannel: currentVoiceState.channelId === channelId
+        });
+
+        if (!serverInList) {
+            console.log(`[${pluginName}] Status update - server not in auto-extract list`);
+            return;
+        }
+
+        console.log(`[${pluginName}] ✅ Status update - Auto-extracting code for channel ${channel.name} in server ${guildId}`);
+
+        // Extract and copy the code
+        const code = await extractCode(channel);
+        if (code) {
+            console.log(`[${pluginName}] ✅ Status update - Auto-extracted code ${code} - copying to clipboard`);
+            copyWithToast(code, `Auto-extracted code ${code} copied to clipboard`);
+        } else {
+            console.log(`[${pluginName}] ❌ Status update - No code found for auto-extraction`);
+        }
+    } catch (error) {
+        console.error(`[${pluginName}] ❌ Error in status update auto-extract:`, error);
+    }
+}
+
 export default definePlugin({
     name: pluginName,
     description: "Voice channel copy utilities (name, status, code)",
@@ -477,9 +525,17 @@ export default definePlugin({
                 statuses[id] = status;
             }
         },
-        VOICE_STATE_UPDATE(voiceState: any) {
-            console.log(`[${pluginName}] 🎯 VOICE_STATE_UPDATE flux event received`);
-            handleVoiceStateUpdate(voiceState);
+        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: any[]; }) {
+            console.log(`[${pluginName}] 🎯 VOICE_STATE_UPDATES flux event received:`, voiceStates.length, "states");
+            const myId = UserStore.getCurrentUser().id;
+
+            for (const voiceState of voiceStates) {
+                if (voiceState.userId === myId) {
+                    console.log(`[${pluginName}] 🎯 Processing my voice state update:`, voiceState);
+                    handleVoiceStateUpdate(voiceState);
+                    break; // Only process our own voice state
+                }
+            }
         },
         VOICE_STATE_CONNECT(voiceState: any) {
             console.log(`[${pluginName}] 🎤 VOICE_STATE_CONNECT event received:`, voiceState);

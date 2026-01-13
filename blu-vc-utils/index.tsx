@@ -266,7 +266,7 @@ const VoiceChannelContext: NavContextMenuPatchCallback = (children, { channel }:
         -1,
         0,
         <Menu.MenuItem
-            label={pluginName}
+            label="Voice Utilities"
             key="voice-tools2"
             id="voice-tools2"
         >
@@ -341,6 +341,41 @@ const VoiceChannelContext: NavContextMenuPatchCallback = (children, { channel }:
             />
 
             <Menu.MenuItem
+                key="voice-tools-copy-name"
+                id="voice-tools-copy-name"
+                label="Copy Name"
+                action={() => {
+                    try {
+                        if (channel?.name) {
+                            copyWithToast(channel.name, `Channel name "${channel.name}" copied`);
+                        } else {
+                            showToast("No channel name found");
+                        }
+                    } catch (error) {
+                        showToast("Error copying channel name", error);
+                    }
+                }}
+            />
+
+            <Menu.MenuItem
+                key="voice-tools-copy-status"
+                id="voice-tools-copy-status"
+                label="Copy Status"
+                action={() => {
+                    try {
+                        const status = getVoiceChannelStatus(channel.id);
+                        if (status) {
+                            copyWithToast(status, `Channel status "${status}" copied`);
+                        } else {
+                            showToast("No channel status found");
+                        }
+                    } catch (error) {
+                        showToast("Error copying channel status", error);
+                    }
+                }}
+            />
+
+            <Menu.MenuItem
                 key="voice-tools-copy-code"
                 id="voice-tools-copy-code"
                 label="Copy Code"
@@ -348,7 +383,7 @@ const VoiceChannelContext: NavContextMenuPatchCallback = (children, { channel }:
                     try {
                         const code = await extractCode(channel);
                         if (code) {
-                            copyWithToast(code, `Code ${code} copied to clipboard`);
+                            copyWithToast(code, `Code ${code} copied`);
                         } else {
                             showToast("No code found");
                         }
@@ -441,7 +476,7 @@ async function handleVoiceStateUpdate(voiceState: any) {
         const code = await extractCode(channel);
         if (code) {
             console.log(`[${pluginName}] ✅ Auto-extracted code ${code} - copying to clipboard`);
-            copyWithToast(code, `Auto-extracted code ${code} copied to clipboard`);
+            copyWithToast(code, `Auto-extracted code ${code} copied`);
         } else {
             console.log(`[${pluginName}] ❌ No code found for auto-extraction`);
         }
@@ -489,7 +524,7 @@ async function handleVoiceChannelStatusUpdate(channelId: string, guildId: string
         const code = await extractCode(channel);
         if (code) {
             console.log(`[${pluginName}] ✅ Status update - Auto-extracted code ${code} - copying to clipboard`);
-            copyWithToast(code, `Auto-extracted code ${code} copied to clipboard`);
+            copyWithToast(code, `Auto-extracted code ${code} copied`);
         } else {
             console.log(`[${pluginName}] ❌ Status update - No code found for auto-extraction`);
         }
